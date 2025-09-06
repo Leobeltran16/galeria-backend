@@ -6,11 +6,16 @@ import cloudinary from "../config/cloudinary.js";
 
 const router = Router();
 
-/* ====== Subida a Cloudinary ====== */
+/* ---- Diagnóstico: confirma que este router se cargó ---- */
+router.get("/ping-images", (_req, res) => {
+  res.json({ ok: true, from: "imagenes.routes.js" });
+});
+
+/* ---- Subida a Cloudinary ---- */
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async () => ({
-    folder: "galeria",                     // <— carpeta en Cloudinary
+    folder: "galeria",                     // carpeta en Cloudinary
     allowed_formats: ["jpg", "jpeg", "png", "webp"],
     use_filename: true,
     unique_filename: true,
@@ -24,15 +29,14 @@ router.post("/upload", upload.single("image"), (req, res) => {
   if (!req.file?.path) {
     return res.status(400).json({ ok: false, error: "No se recibió imagen" });
   }
-  return res.status(201).json({
+  res.status(201).json({
     ok: true,
     url: req.file.path,            // URL segura de Cloudinary
     public_id: req.file.filename,
   });
 });
 
-/* ====== Listado de imágenes (para tu frontend) ======
-   Devuelve las imágenes de la carpeta 'galeria/' en Cloudinary.
+/* ---- Listado de imágenes desde Cloudinary ----
    Soporta paginación opcional con ?next=cursor
 */
 router.get("/images", async (req, res) => {

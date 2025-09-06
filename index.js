@@ -35,12 +35,18 @@ mongoose.connect(process.env.MONGO_URI)
 // Raíz para evitar "Cannot GET /"
 app.head("/", (_, res) => res.sendStatus(200));
 app.get("/", (_req, res) => {
-  res.json({ ok: true, name: "galeria-backend", time: new Date().toISOString() });
+  res.json({
+    ok: true,
+    name: "galeria-backend",
+    time: new Date().toISOString(),
+    commit: process.env.RENDER_GIT_COMMIT || null, // útil para verificar deploy
+  });
 });
 
 // Rutas API
 app.use("/api", healthRoutes);
 app.use("/api", imagenesRoutes);
+console.log("🧭 Rutas imágenes montadas: GET /api/images, POST /api/upload, GET /api/ping-images");
 
 // Arranque
 const PORT = process.env.PORT || 10000;
