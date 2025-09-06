@@ -1,63 +1,36 @@
-import express from "express";
+// routes/imagenes.routes.js
+import { Router } from "express";
+import multer from "multer";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
 import cloudinary from "../config/cloudinary.js";
-import { upload } from "../middleware/upload.js";
-import Imagen from "../models/Imagen.js";
 
-const router = express.Router();
+const router = Router();
 
-// SUBIR IMAGEN A CLOUDINARY
-router.post("/images", upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "No se seleccionó ningún archivo" });
-
-    const result = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        { folder: "galeria" },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      );
-      uploadStream.end(req.file.buffer);
-    });
-
-    const imagen = new Imagen({
-      titulo: req.body.titulo || "Sin título",
-      url: result.secure_url,
-      public_id: result.public_id,
-      size: req.file.size,
-    });
-
-    await imagen.save();
-    res.json(imagen);
-  } catch (error) {
-    res.status(500).json({ error: "Error al subir imagen" });
-  }
+// Storage en Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async () => ({
+    folder: "galeria",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    use_filename: true,
+    unique_filename: true,
+    overwrite: false,
+    transformation: [{ width: 1600, height: 1200, crop: "limit" }],
+  }),
 });
 
-// OBTENER TODAS LAS IMÁGENES
-router.get("/images", async (req, res) => {
-  try {
-    const imagenes = await Imagen.find().sort({ createdAt: -1 });
-    res.json(imagenes);
-  } catch (error) {
-    res.status(500).json({ error: "Error al obtener imágenes" });
+const upload = multer({ storage });
+
+// Subida: el campo del archivo debe llamarse "image"
+router.post("/upload", upload.single("image"), (req, res) => {
+  if (!req.file?.path) {
+    return res.status(400).json({ ok: false, error: "No se recibió imagen" });
   }
-});
-
-// ELIMINAR IMAGEN
-router.delete("/images/:id", async (req, res) => {
-  try {
-    const imagen = await Imagen.findById(req.params.id);
-    if (!imagen) return res.status(404).json({ error: "Imagen no encontrada" });
-
-    await cloudinary.uploader.destroy(imagen.public_id);
-    await imagen.deleteOne();
-
-    res.json({ mensaje: "Imagen eliminada correctamente" });
-  } catch (error) {
-    res.status(500).json({ error: "Error al eliminar imagen" });
-  }
+  return res.status(201).json({
+    ok: true,
+    url: req.file.path,        // URL HTTPS de Cloudinary
+    public_id: req.file.filename,
+  });
 });
 
 export default router;
