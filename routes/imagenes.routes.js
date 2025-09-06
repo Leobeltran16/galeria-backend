@@ -1,4 +1,3 @@
-// routes/imagenes.routes.js
 import { Router } from "express";
 import multer from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
@@ -6,40 +5,57 @@ import cloudinary from "../config/cloudinary.js";
 
 const router = Router();
 
-/* ---- Diagnóstico (opcional) ---- */
+/* Ping para diagnosticar que el router está cargado */
 router.get("/ping-images", (_req, res) => {
   res.json({ ok: true, from: "imagenes.routes.js" });
 });
 
-/* ---- Subida a Cloudinary (con título) ---- */
+/* Storage en Cloudinary (sube la imagen) */
 const storage = new CloudinaryStorage({
   cloudinary,
-  params: (req /*, file*/) => ({
+  params: {
     folder: "galeria",
     allowed_formats: ["jpg", "jpeg", "png", "webp"],
     use_filename: true,
     unique_filename: true,
     overwrite: false,
     transformation: [{ width: 1600, height: 1200, crop: "limit" }],
-    // Guardamos el "título" como caption en el context
-    context: { caption: (req.body?.title || "").slice(0, 120) },
-  }),
+  },
 });
 const upload = multer({ storage });
 
-router.post("/upload", upload.single("image"), (req, res) => {
-  if (!req.file?.path) {
-    return res.status(400).json({ ok: false, error: "No se recibió imagen" });
+/* POST /api/upload  (imagen + title) */
+router.post("/upload", upload.single("image"), async (req, res) => {
+  try {
+    const title = (req.body?.title || "").trim().slice(0, 120);
+    const url = req.file?.path;
+    const publicId = req.file?.filename || req.file?.public_id;
+
+    if (!url || !publicId) {
+      return res.status(400).json({ ok: false, error: "No se recibió imagen" });
+    }
+
+    // 🔧 Aseguramos guardar el título en el contexto del recurso
+    if (title) {
+      await cloudinary.uploader.explicit(publicId, {
+        type: "upload",
+        context: { caption: title },
+      });
+    }
+
+    return res.status(201).json({
+      ok: true,
+      url,
+      public_id: publicId,
+      title,
+    });
+  } catch (e) {
+    console.error("upload error:", e);
+    res.status(500).json({ ok: false, error: e.message });
   }
-  return res.status(201).json({
-    ok: true,
-    url: req.file.path,
-    public_id: req.file.filename,
-    title: req.body?.title || "",
-  });
 });
 
-/* ---- Listado de imágenes (con título) ---- */
+/* GET /api/images  (lista con título) */
 router.get("/images", async (req, res) => {
   try {
     const { next } = req.query;
@@ -52,36 +68,39 @@ router.get("/images", async (req, res) => {
       context: true,
     });
 
-    const images = (result.resources || []).map(r => ({
+    const images = (result.resources || []).map((r) => ({
       url: r.secure_url || r.url,
       public_id: r.public_id,
       width: r.width,
       height: r.height,
       format: r.format,
       created_at: r.created_at,
-      // título desde context.custom.caption o .title
+      // leemos el caption guardado arriba
       title:
-        (r.context && (r.context.custom?.caption || r.context.custom?.title)) ||
+        r?.context?.custom?.caption ??
+        r?.context?.caption ??
+        r?.context?.custom?.title ??
         "",
     }));
 
     res.json({ ok: true, images, next: result.next_cursor || null });
   } catch (e) {
+    console.error("list error:", e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-/* ---- Borrar imagen ---- */
+/* DELETE /api/images/:publicId  (borrar imagen) */
 router.delete("/images/:publicId", async (req, res) => {
   try {
     const publicId = req.params.publicId;
     const r = await cloudinary.uploader.destroy(publicId);
-    // r.result: "ok", "not found", etc.
     if (r.result !== "ok" && r.result !== "not found") {
       return res.status(400).json({ ok: false, error: r.result });
     }
     res.json({ ok: true, public_id: publicId });
   } catch (e) {
+    console.error("delete error:", e);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
